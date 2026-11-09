@@ -1,0 +1,21 @@
+{
+  "capturedAt": "2026-11-06T22:20:32.707Z",
+  "placeholder": false,
+  "answer": {
+    "picks": {
+      "slots": {
+        "d1-lunch": "m-ribeira",
+        "d1-pm": "a-graca",
+        "d1-late": "a-tower",
+        "d1-dinner": "m-fado"
+      },
+      "hotelId": "h-patio"
+    },
+    "why": {
+      "d1-lunch": "Explore food markets",
+      "d1-pm": "Panoramic city views and history",
+      "d1-late": "River walks with city views",
+      "d1-dinner": "Experience authentic Fado music"
+    }
+  }
+}

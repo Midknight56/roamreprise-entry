@@ -1,0 +1,15 @@
+node_modules/
+.wrangler/
+.dev.vars
+.dev.vars.*
+.env
+.env.*
+*.local.txt
+public/vendor/
+test-results/
+playwright-report/
+artifacts/
+dist/
+/video/
+shots/
+test-results/

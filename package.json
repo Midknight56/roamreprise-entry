@@ -1,0 +1,27 @@
+{
+  "name": "roamreprise",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "e2e": "playwright test",
+    "dev": "python dev/cf.py dev",
+    "deploy": "python dev/cf.py deploy",
+    "shots": "node dev/shots.mjs"
+  },
+  "dependencies": {
+    "three": "^0.187.0"
+  },
+  "devDependencies": {
+    "@bryntum/scheduler-trial": "^7.3.8",
+    "@cloudflare/vitest-plugin": "^1.4.7",
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "@playwright/test": "^1.64.1",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.152.0"
+  }
+}
