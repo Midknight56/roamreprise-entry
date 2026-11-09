@@ -4,9 +4,9 @@ import { MAX_AI_CALLS_PER_TRIP, MAX_ASKS_PER_TRIP, MAX_ASK_CHARS, MAX_CEILING_CE
 import { applyAsk, checkChange, namedSlot, ruleAsk, type AskChange } from '../domain/ask';
 import { applyPayPalRead, blockedByUnknown, canCapture, canRefund, canVoid, toCents } from '../domain/money';
 import { askOptions, buildItinerary, candidatesForSlots, DEFAULT_TASTES, hotelCandidates, type PlanInput } from '../domain/planner';
-import { applyCandidate, repairFailedLeg, replanSlot } from '../domain/repair';
+import { aiChoices, applyCandidate, rankCandidates, repairFailedLeg, replanSlot } from '../domain/repair';
 import { transition } from '../domain/reservations';
-import type { AgentStep, Item, PaymentAttempt, PickSource, TripView, WebhookReceipt } from '../domain/types';
+import type { AgentStep, Item, PaymentAttempt, PickSource, RepairPolicy, TripView, WebhookReceipt } from '../domain/types';
 import { isActive, validateSchedule } from '../domain/validate';
 import { tasteText, type TripAI, type Proposal, type RepairPick } from '../ai/agent';
 import { ApiError } from '../errors';
@@ -27,21 +27,26 @@ export interface TripDependencies {
     repair: { placeholder: boolean; capturedAt: string | null; answer: RepairPick };
   };
 }
-export function repairReason(candidate: Pick<import('../domain/types').Candidate, 'moves' | 'priceDeltaCents'>, oldHotelName?: string) {
+export function repairReason(candidate: Pick<import('../domain/types').Candidate, 'moves' | 'priceDeltaCents'> & { droppedActivities?: string[] }, oldHotelName?: string) {
   const difference = candidate.priceDeltaCents;
   const money = `$${(Math.abs(difference) / 100).toFixed(2)}`;
   const priceText = oldHotelName && difference < 0 ? `Saves ${money} against ${oldHotelName}. `
     : oldHotelName && difference > 0 ? `Costs ${money} more than ${oldHotelName}. ` : '';
   const count = candidate.moves.length;
-  return `${priceText}${count} stop${count === 1 ? '' : 's'} ${count === 1 ? 'moves' : 'move'}; every travel buffer kept.`;
+  const dropped = candidate.droppedActivities ?? [];
+  const activities = dropped.length ? `Drops ${dropped.join(' and ')}. ` : 'Keeps every activity. ';
+  return `${priceText}${activities}${count} stop${count === 1 ? '' : 's'} ${count === 1 ? 'moves' : 'move'}; travel buffers kept (estimated times).`;
 }
 export function tripInput(body: Record<string, unknown>): PlanInput {
   if (!Array.isArray(body.tastes) || !body.tastes.length || body.tastes.length > 10 || body.tastes.some(t => typeof t !== 'string' || !TASTES.includes(t)) ||
     typeof body.note !== 'string' || body.note.length > MAX_NOTE_CHARS || !Number.isInteger(body.ceilingCents) ||
-    (body.ceilingCents as number) < MIN_CEILING_CENTS || (body.ceilingCents as number) > MAX_CEILING_CENTS) throw new ApiError('BAD_REQUEST', 'Choose valid tastes, a note up to 280 characters, and a ceiling from $300 to $1,500.', 400);
-  return { tastes: [...new Set(body.tastes)] as string[], note: body.note, ceilingCents: body.ceilingCents as number };
+    (body.ceilingCents as number) < MIN_CEILING_CENTS || (body.ceilingCents as number) > MAX_CEILING_CENTS ||
+    (body.repairPolicy !== undefined && body.repairPolicy !== 'lowest_total' && body.repairPolicy !== 'keep_activities')) throw new ApiError('BAD_REQUEST', 'Choose valid tastes, a note up to 280 characters, a ceiling from $300 to $1,500, and a repair choice.', 400);
+  return { tastes: [...new Set(body.tastes)] as string[], note: body.note, ceilingCents: body.ceilingCents as number,
+    repairPolicy: (body.repairPolicy ?? 'lowest_total') as RepairPolicy };
 }
-const defaults = (input: PlanInput) => input.note === '' && input.tastes.length === DEFAULT_TASTES.length && DEFAULT_TASTES.every(t => input.tastes.includes(t));
+const policyOf = (trip: { repairPolicy?: RepairPolicy }): RepairPolicy => trip.repairPolicy ?? 'lowest_total';
+const defaults = (input: PlanInput) => policyOf(input) === 'lowest_total' && input.note === '' && input.tastes.length === DEFAULT_TASTES.length && DEFAULT_TASTES.every(t => input.tastes.includes(t));
 const requireState: (condition: unknown, message?: string) => asserts condition = (condition, message = 'This action is not available now.') => {
   if (!condition) throw new ApiError('STATE', message);
 };
@@ -320,29 +325,31 @@ export class TripEngine {
     this.trip.repairBase = structuredClone(baseline);
     const index = this.trip.repairBase.items.findIndex(i => i.id === hotel.id);
     if (this.trip.repairBase.items[index].state !== 'failed') this.trip.repairBase.items[index] = transition(this.trip.repairBase.items[index], 'failed');
-    const repair = repairFailedLeg(this.trip.repairBase, hotel.id, this.trip.ceilingCents);
+    const policy = policyOf(this.trip);
+    const repair = repairFailedLeg(this.trip.repairBase, hotel.id, this.trip.ceilingCents, policy);
     await this.releaseHolds();
-    const checked = repair.candidates.filter(c => c.checks.ok).sort((a, b) => a.newTotalCents - b.newTotalCents || a.moves.length - b.moves.length || a.id.localeCompare(b.id));
+    const checked = rankCandidates(repair.candidates, policy), choices = aiChoices(repair.candidates, policy);
     const rulePick = checked[0];
     const failedHotel = this.trip.repairBase.items.find(i => i.kind === 'lodging' && i.booked);
     let pickId = rulePick?.id ?? '', pickReason = rulePick
       ? `Rule pick: ${repairReason(rulePick, failedHotel?.name)}`
+      : policy === 'keep_activities' ? `Rule pick: No replacement keeps every activity within your $${(this.trip.ceilingCents / 100).toFixed(2)} ceiling.`
       : 'Rule pick: lowest total, then fewest moves.', pickSource: PickSource = 'rule', neurons: number | undefined;
     // Persist a usable rule proposal before yielding to AI; an interrupted call cannot strand released holds.
     this.trip.repair = { failedItemId: hotel.id, candidates: repair.candidates, pickId, pickReason, pickSource };
     this.trip.previous = { version: this.trip.repairBase.version, items: structuredClone(this.trip.repairBase.items) };
     if (!this.trip.repairAsked && this.trip.aiCalls < MAX_AI_CALLS_PER_TRIP) {
       this.trip.repairAsked = true; this.trip.aiCalls++; await this.save();
-      const live = await this.deps.ai.repairPick(repair.candidates, this.trip.tastes);
-      if (live?.answer && checked.some(c => c.id === live.answer!.id)) {
-        const chosen = checked.find(c => c.id === live.answer!.id)!;
+      const live = choices.length ? await this.deps.ai.repairPick(choices, this.trip.tastes, policy) : null;
+      if (live?.answer && choices.some(c => c.id === live.answer!.id)) {
+        const chosen = choices.find(c => c.id === live.answer!.id)!;
         const oldHotel = this.trip.repairBase.items.find(i => i.kind === 'lodging' && i.booked);
         pickId = chosen.id;
         pickReason = `${repairReason(chosen, oldHotel?.name)}${live.answer.reason ? ` ${live.answer.reason}` : ' The AI gave no reason; this sentence is from the code checks.'}`;
         pickSource = 'live'; neurons = live.neurons; this.trip.repairAnswer = live.answer;
       } else if (live) {
         neurons = live.neurons;
-      } else if (defaults(this.trip) && !recordedRepair.placeholder && recordedRepair.capturedAt && checked.some(c => c.id === recordedRepair.answer.id)) {
+      } else if (defaults(this.trip) && !recordedRepair.placeholder && recordedRepair.capturedAt && choices.some(c => c.id === recordedRepair.answer.id)) {
         pickId = recordedRepair.answer.id;
         const chosen = checked.find(c => c.id === pickId)!;
         const fit = tasteText(recordedRepair.answer.reason);
@@ -387,7 +394,7 @@ export class TripEngine {
     const candidate = t.repair?.candidates.find(c => c.id === t.pendingCandidateId);
     requireState(t.pendingAsk || (candidate && t.repairBase));
     const asked = !!t.pendingAsk;
-    const next = t.pendingAsk ?? applyCandidate(t.repairBase!, candidate!);
+    const next = t.pendingAsk ?? applyCandidate(t.repairBase!, candidate!, policyOf(t));
     // Old holds have all been released. Each active row now describes a new reservation.
     next.items = next.items.map(i => {
       if (!isActive(i)) return i;
@@ -632,7 +639,7 @@ export class TripEngine {
     const hotel = this.trip.itinerary.items.find(i => i.kind === 'lodging' && i.booked)!;
     const candidates = repairFailedLeg(this.trip.itinerary, hotel.id, this.trip.ceilingCents).candidates;
     this.trip.aiCalls++; this.trip.repairAsked = true; await this.save();
-    const result = await this.deps.ai.repairPick(candidates, this.trip.tastes);
+    const result = await this.deps.ai.repairPick(aiChoices(candidates), this.trip.tastes, 'lowest_total');
     requireState(result?.answer, 'Live repair AI is unavailable or unusable. No recorded answer was saved.');
     this.trip.repairAnswer = result.answer; await this.save();
     return { propose: this.trip.proposalAnswer, repair: result.answer, capturedAt: this.now() };

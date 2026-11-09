@@ -56,15 +56,16 @@ describe('AI hard cap and honest fallback', () => {
     const e = new TripEngine({ ...w.deps, store: new MemoryStore(), ai });
     await e.create(ID, SID, input()); await e.action(SID, 'quote'); await e.action(SID, 'pay/card'); await e.action(SID, 'supplier/hotel-unavailable');
     const view = await e.get(SID), log = view.log.find(l => l.tool === 'repair_failed_leg')!;
-    expect(log.summary).toMatch(/Saves \$\d+\.\d{2} against .*\. \d+ stops move; every travel buffer kept\./);
+    expect(log.summary).toMatch(/Saves \$\d+\.\d{2} against .*\. Keeps every activity\. \d+ stops move; travel buffers kept \(estimated times\)\./);
     expect(log.source).toBe('live');
   });
   test.each([
-    { count: 1, delta: -3100, expected: 'Saves $31.00 against Casa do Pátio. 1 stop moves; every travel buffer kept.' },
-    { count: 3, delta: -3100, expected: 'Saves $31.00 against Casa do Pátio. 3 stops move; every travel buffer kept.' },
-    { count: 1, delta: 4600, expected: 'Costs $46.00 more than Casa do Pátio. 1 stop moves; every travel buffer kept.' },
-  ])('repair reason: $expected', ({ count, delta, expected }) => {
-    expect(repairReason({ moves: Array.from({ length: count }, () => ({} as import('../../src/domain/types').Candidate['moves'][number])), priceDeltaCents: delta }, 'Casa do Pátio')).toBe(expected);
+    { count: 1, delta: -3100, expected: 'Saves $31.00 against Casa do Pátio. Keeps every activity. 1 stop moves; travel buffers kept (estimated times).' },
+    { count: 3, delta: -3100, expected: 'Saves $31.00 against Casa do Pátio. Keeps every activity. 3 stops move; travel buffers kept (estimated times).' },
+    { count: 1, delta: 4600, expected: 'Costs $46.00 more than Casa do Pátio. Keeps every activity. 1 stop moves; travel buffers kept (estimated times).' },
+    { count: 2, delta: -3100, dropped: ['Castle hill walk'], expected: 'Saves $31.00 against Casa do Pátio. Drops Castle hill walk. 2 stops move; travel buffers kept (estimated times).' },
+  ] as { count: number; delta: number; dropped?: string[]; expected: string }[])('repair reason: $expected', ({ count, delta, dropped, expected }) => {
+    expect(repairReason({ moves: Array.from({ length: count }, () => ({} as import('../../src/domain/types').Candidate['moves'][number])), priceDeltaCents: delta, droppedActivities: dropped }, 'Casa do Pátio')).toBe(expected);
   });
   test('ledger refuses at app cap: no model call and visibly labelled rule pick', async () => {
     const ledger = new MemoryLedger(); await ledger.charge('roamreprise', '2026-11-06', DAILY_NEURONS, DAILY_NEURONS, ACCOUNT_DAILY_NEURONS_GUARD);
@@ -154,14 +155,14 @@ describe('AI hard cap and honest fallback', () => {
     const w = await world(), capturedAt = clock().toISOString();
     const recorded = {
       propose: { placeholder: false, capturedAt, answer: { picks: { hotelId: 'h-patio' }, why: {} } },
-      repair: { placeholder: false, capturedAt, answer: { id: 'h-lumen', reason: 'Fado music nearby' } },
+      repair: { placeholder: false, capturedAt, answer: { id: 'h-riocalmo', reason: 'Fado music nearby' } },
     };
     const engine = new TripEngine({ ...w.deps, store: new MemoryStore(), recorded });
     const v = await engine.create(ID, SID, input());
     expect(v.log.find(l => l.tool === 'propose_itinerary')).toMatchObject({ source: 'recorded', summary: `Recorded answer from ${capturedAt}.` });
     await engine.action(SID, 'quote'); await engine.action(SID, 'pay/card');
     const repair = await engine.action(SID, 'supplier/hotel-unavailable') as import('../../src/domain/types').TripView;
-    expect(repair.repair).toMatchObject({ pickId: 'h-lumen', pickSource: 'recorded' });
+    expect(repair.repair).toMatchObject({ pickId: 'h-riocalmo', pickSource: 'recorded' });
     expect(repair.repair!.pickReason).toContain(`Recorded answer from ${capturedAt}.`);
   });
   test.each(['move', 'moves', 'stop', 'stops', 'fewer', 'less', 'more', 'cheap', 'cheaper', 'price', 'cost', 'save', 'saves', 'budget', 'total', 'buffer', 'minute', 'time', '3', '$', '€'])('proposal why and repair fit drop factual claims: %s', word => {
@@ -196,10 +197,10 @@ describe('AI hard cap and honest fallback', () => {
   test('live recording returns two actual answers, enforces two calls per trip, sends no PayPal writes', async () => {
     const w = await world(), call = vi.fn()
       .mockResolvedValueOnce({ text: '{"hotelId":"h-patio","slots":{"d1-lunch":{"offerId":"m-ribeira","why":"Markets fit your tastes"}}}', neurons: 1 })
-      .mockResolvedValueOnce({ text: '{"id":"h-lumen","reason":"Fewest changed times"}', neurons: 1 });
+      .mockResolvedValueOnce({ text: '{"id":"h-riocalmo","reason":"Fewest changed times"}', neurons: 1 });
     const engine = new TripEngine({ ...w.deps, store: new MemoryStore(), ai: new Agent({ call }) });
     await engine.create(ID, SID, input()); const recorded = await engine.recordAnswers(SID);
-    expect(recorded.propose).toBeTruthy(); expect(recorded.repair.id).toBe('h-lumen'); expect(recorded.capturedAt).toBe(clock().toISOString());
+    expect(recorded.propose).toBeTruthy(); expect(recorded.repair.id).toBe('h-riocalmo'); expect(recorded.capturedAt).toBe(clock().toISOString());
     expect(call).toHaveBeenCalledTimes(2); expect(w.sb.sent).toHaveLength(0);
     await expect(engine.recordAnswers(SID)).rejects.toMatchObject({ code: 'STATE' }); expect(call).toHaveBeenCalledTimes(2);
   });

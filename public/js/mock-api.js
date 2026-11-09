@@ -217,6 +217,7 @@ function makeTrip(body) {
     phase: 'planned',
     asksLeft: 2,
     ceilingCents: body.ceilingCents ?? 60000,
+    repairPolicy: body.repairPolicy === 'keep_activities' ? 'keep_activities' : 'lowest_total',
     tastes: body.tastes || [],
     note: body.note || '',
     itinerary: {
@@ -354,7 +355,7 @@ function candidates(t) {
       .reduce((sum, item) => sum + item.priceCents, 0);
     const issues =
       id === 'terraco'
-        ? [{ code: 'AVAILABILITY', message: 'No rooms that night.' }]
+        ? [{ code: 'AVAILABILITY', message: 'No rooms (simulated inventory).' }]
         : itinerary.totalCents > t.ceilingCents
           ? [
               {
@@ -373,6 +374,7 @@ function candidates(t) {
       moves,
       repriced,
       dropped: [],
+      droppedActivities: [],
       checks: { ok: !issues.length, issues },
       itinerary,
     };

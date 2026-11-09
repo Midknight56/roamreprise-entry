@@ -7,7 +7,8 @@ import { createSchedule } from './schedule-loader.js';
 import { BasicSchedule } from './schedule-basic.js';
 import { renderPay } from './pay.js';
 import { droppedItemLabel } from './repair-label.js';
-import { moneyStory, renderMandate, wasCaptured } from './money-story.js';
+import { moneyStory, netSummaryText, renderMandate, wasCaptured } from './money-story.js';
+import { failedItemName, repairSummary, candidateFacts } from './repair-view.js';
 function $(id) {
   return document.getElementById(id);
 }
@@ -124,6 +125,7 @@ $('plan-form').onsubmit = function submitPlan(e) {
         tastes: [...selected],
         note: $('note').value.trim(),
         ceilingCents: Math.round(Number($('ceiling').value) * 100),
+        repairPolicy: document.querySelector('input[name="repairPolicy"]:checked')?.value ?? 'lowest_total',
       }),
     { fly: true },
   );
@@ -164,26 +166,28 @@ function paymentLabel(p) {
   };
   return `PayPal: ${labels[p.state] || p.state} ${money(p.amountCents)}`;
 }
-const summaries = {
-  planned: 'A checked plan, before any holds. Approve the quote to continue.',
-  quoted:
-    'A hold reserves test money. Capture waits until all bookings are confirmed.',
-  authorized: 'Payment is authorized. Place the simulated supplier holds next.',
-  holding:
-    'Your holds are provisional. Try a hotel failure to see the recovery.',
-  repair_proposed:
-    'Casa do Pátio is unavailable. Compare checked hotels before changing your approval.',
-  requote:
-    'The previous hold was voided. This changed plan needs a new authorization.',
-  confirmed_captured:
-    'Bookings confirmed with the Simulated supplier. Payment captured in sandbox.',
-  refund_pending: 'The slot is repaired. The computed refund is still pending.',
-  refunded: 'Your replacement fits. The computed refund is completed.',
-  declined:
-    'The card was declined. No bookings are confirmed and no payment was captured.',
-  checking_payment:
-    'The response was lost. Check the existing payment before any new payment or booking.',
-};
+function summaries(t) {
+  const labels = {
+    planned: 'A checked plan, before any holds. Approve the quote to continue.',
+    quoted:
+      'A hold reserves the money. Capture waits until all bookings are confirmed.',
+    authorized: 'Payment is authorized. Place the simulated supplier holds next.',
+    holding:
+      'Your holds are provisional. Try a hotel failure to see the recovery.',
+    repair_proposed: repairSummary(t),
+    requote:
+      'The previous hold was voided. This changed plan needs a new authorization.',
+    confirmed_captured:
+      'Bookings confirmed with the Simulated supplier. Payment captured.',
+    refund_pending: 'The slot is repaired. The computed refund is still pending.',
+    refunded: 'Your replacement fits. The computed refund is completed.',
+    declined:
+      'The card was declined. No bookings are confirmed and no payment was captured.',
+    checking_payment:
+      'The response was lost. Check the existing payment before any new payment or booking.',
+  };
+  return labels[t.phase] || t.phase;
+}
 // Keep every panel on the same returned TripView, including checked previews.
 async function render({ keepIdleGlobe = false } = {}) {
   if (!keepIdleGlobe) stopIdleGlobe($('globe'));
@@ -198,9 +202,19 @@ async function render({ keepIdleGlobe = false } = {}) {
   );
   $('ceiling-label').textContent = `Ceiling ${money(trip.ceilingCents)}`;
   if (!$('mandate')) {
-    $('phase-summary').insertAdjacentHTML('beforebegin', '<div id="mandate"></div><div id="money-story-chips" class="state-chips money-story-chips" aria-label="What happened to my money" aria-live="polite"></div>');
+    $('phase-summary').insertAdjacentHTML('beforebegin', '<div id="mandate"></div><p id="money-net-summary" class="net-summary" hidden></p><div id="money-story-chips" class="state-chips money-story-chips" aria-label="What happened to my money" aria-live="polite"></div>');
   }
   $('mandate').innerHTML = renderMandate(trip);
+  const netEl = $('money-net-summary');
+  const hasCapture = trip.payments.some(wasCaptured);
+  if (hasCapture) {
+    const summaryText = netSummaryText(trip);
+    netEl.textContent = summaryText;
+    netEl.hidden = !summaryText;
+  } else {
+    netEl.textContent = '';
+    netEl.hidden = true;
+  }
   const storyChips = $('money-story-chips');
   storyChips.hidden = !trip.payments.some(payment => wasCaptured(payment) || payment.state === 'voided');
   storyChips.innerHTML = storyChips.hidden ? '' : [
@@ -224,7 +238,7 @@ async function render({ keepIdleGlobe = false } = {}) {
     <span class="state-chip">Bookings: ${esc(bookings || 'None')} · Simulated supplier</span>
     ${refunds.map(renderRefundState).join('')}
   `;
-  $('phase-summary').textContent = quoteNote(trip) || summaries[trip.phase] || trip.phase;
+  $('phase-summary').textContent = quoteNote(trip) || summaries(trip);
   if (['refund_pending', 'refunded'].includes(trip.phase)) {
     const amount = money(refunds.reduce((sum, refund) => sum + refund.amountCents, 0));
     $('phase-summary').textContent = trip.phase === 'refunded'
@@ -325,7 +339,7 @@ function renderAgentStep(step, neuronsToday) {
   const aiWords = step.tool === 'propose_itinerary'
     ? [...new Set(trip.itinerary.items.map((item) => item.why).filter(Boolean))]
     : step.tool === 'repair_failed_leg' && step.source !== 'rule' && step.aiWords !== false
-      ? [trip.repair?.pickReason?.split(/every travel buffer kept\./i).at(-1)?.trim()].filter(Boolean)
+      ? [trip.repair?.pickReason?.split(/every travel buffer kept\.|travel buffers kept \(estimated times\)\./i).at(-1)?.trim()].filter(Boolean)
       : [];
   const aiLine = aiWords.length
     ? `<p class="ai-words"><span>The AI said:</span> ${aiWords.map((word) => `“${esc(word)}”`).join(' ')}</p>`
@@ -454,30 +468,39 @@ function renderCandidate(candidate) {
   const isSelected = candidate.id === selectedCandidate;
   const classes = [
     'candidate',
-    candidate.checks.ok ? '' : 'rejected',
     isSelected ? 'selected' : '',
   ]
     .filter(Boolean)
     .join(' ');
+  const facts = candidateFacts(trip, candidate);
   return `
     <article class="${classes}">
-      <span class="badge">${candidate.checks.ok ? 'Checked · fits' : 'Rejected'}</span>
+      <span class="badge">Checked · fits</span>
       <h3>${esc(candidate.name)}</h3>
-      <p>${esc(candidate.area)} · Simulated supplier</p>
-      <p class="candidate-price">${money(candidate.newTotalCents)} total
-        <small>(${candidate.priceDeltaCents >= 0 ? '+' : ''}${money(candidate.priceDeltaCents)})</small>
-      </p>
-      ${
-        candidate.checks.ok
-          ? `
-        <ul class="candidate-moves">${candidate.moves.map(renderMove).join('')}${candidate.dropped.map((id) => `<li>Drop ${esc(droppedItemLabel(trip.itinerary, id))}</li>`).join('')}</ul>
-        ${candidate.moves.length ? '<p class="travel-explanation">Keep travel time and 10 minutes of slack.</p>' : ''}
-        <ul class="candidate-repriced">${candidate.repriced.map(renderReprice).join('')}</ul>
-        ${!recorded ? `<button type="button" data-candidate="${esc(candidate.id)}" aria-pressed="${isSelected}">${isSelected ? 'Previewing this hotel' : 'Preview this hotel'}</button>${isSelected && trip.next.includes('repair/accept') ? `<button type="button" class="primary" data-accept="${esc(candidate.id)}">Use ${esc(candidate.name)}</button>` : ''}` : ''}
-      `
-          : `<p class="rejection">${candidate.checks.issues.map((issue) => esc(issue.message)).join(' ')}</p>`
-      }
+      <p class="candidate-area">${esc(candidate.area)} · Simulated supplier</p>
+      <div class="candidate-facts">
+        <p class="fact fact-total">${esc(facts.fact1)}</p>
+        <p class="fact fact-activities">${esc(facts.fact2)}</p>
+        <p class="fact fact-moves">${esc(facts.fact3)}</p>
+        <p class="fact fact-checks">${esc(facts.fact4.main)}<br><small class="fact-sub">${esc(facts.fact4.sub)}</small></p>
+        ${facts.fact5 ? `<p class="fact fact-hold">${esc(facts.fact5)}</p>` : ''}
+      </div>
+      ${candidate.moves.length ? `<ul class="candidate-moves fine-list">${candidate.moves.map(renderMove).join('')}${candidate.dropped.map((id) => `<li>Drop ${esc(droppedItemLabel(trip.itinerary, id))}</li>`).join('')}</ul>` : ''}
+      ${candidate.moves.length ? '<p class="travel-explanation">Keep travel time and 10 minutes of slack.</p>' : ''}
+      ${candidate.repriced.length ? `<ul class="candidate-repriced fine-list">${candidate.repriced.map(renderReprice).join('')}</ul>` : ''}
+      ${!recorded ? `<button type="button" data-candidate="${esc(candidate.id)}" aria-pressed="${isSelected}">${isSelected ? 'Previewing this hotel' : 'Preview this hotel'}</button>${isSelected && trip.next.includes('repair/accept') ? `<button type="button" class="primary" data-accept="${esc(candidate.id)}">Use ${esc(candidate.name)}</button>` : ''}` : ''}
     </article>
+  `;
+}
+
+function renderRejectedCandidate(candidate) {
+  return `
+    <div class="candidate rejected rejected-line">
+      <span class="badge">Rejected</span>
+      <h4>${esc(candidate.name)}</h4>
+      <span class="candidate-price">${money(candidate.newTotalCents)} total</span>
+      <span class="rejection">${esc(candidate.checks.issues.map((issue) => issue.message).join(' '))}</span>
+    </div>
   `;
 }
 
@@ -487,13 +510,24 @@ function renderRepair() {
   panel.hidden = trip.phase !== 'repair_proposed' || !trip.repair;
   if (panel.hidden) return;
   const r = trip.repair;
+  const failedName = failedItemName(trip) || 'The hotel';
+  const checked = r.candidates.filter((c) => c.checks.ok);
+  const rejected = r.candidates.filter((c) => !c.checks.ok);
   panel.innerHTML = `
     <div class="section-heading"><div>
       <p class="eyebrow">A CHANGE OF PLANS</p>
       <h2 id="repair-title">A room fell through.<br>Your weekend doesn't have to.</h2>
     </div></div>
-    <p class="repair-intro">Casa do Pátio · <span class="rejection">failed</span> · Simulated supplier</p>
-    <div class="candidate-grid">${r.candidates.map(renderCandidate).join('')}</div>
+    <p class="repair-intro">${esc(failedName)} · <span class="rejection">failed</span> · Simulated supplier</p>
+    <div class="candidate-grid">${checked.map(renderCandidate).join('')}</div>
+    ${rejected.length ? `
+      <section class="rejected-block">
+        <h3>Also checked, not usable</h3>
+        <div class="rejected-list">
+          ${rejected.map(renderRejectedCandidate).join('')}
+        </div>
+      </section>
+    ` : ''}
     <p class="pick-reason"><span class="source">${sourceName(r.pickSource)}</span> ${esc(r.pickReason.replace(/^Rule pick:\s*/i, ''))}</p>
   `;
   panel.querySelector('[data-accept]')?.addEventListener('click', () => run(() => api.accept(trip.id, selectedCandidate ?? r.pickId)));

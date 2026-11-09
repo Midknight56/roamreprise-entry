@@ -117,7 +117,7 @@ test('the recorded viewer shows no ask input', async ({ page }) => {
 
 for (const mock of [true, false]) test(`PART B ${mock ? 'mock' : 'real local server'}: ask after a hold voids the old authorization and authorizes a new hold`, async ({ page }) => {
   await startTrip(page, mock); await quote(page);
-  await press(page, /^Hold .* with sandbox test card \(no sign in\)$/);
+  await press(page, /^Hold .* with card \(no sign in\)$/);
   const before = await waitPhase(page, 'holding');
   await expect(page.locator('#ask-panel')).toBeVisible();
   await page.locator('#ask-input').fill('Swap the castle for coffee');
@@ -130,7 +130,7 @@ for (const mock of [true, false]) test(`PART B ${mock ? 'mock' : 'real local ser
   expect(changed.quote!.totalCents).toBe(before.quote!.totalCents - 300);
   expect(changed.quote!.version).toBe(before.quote!.version + 1);
   await expect(page.locator('#money-story-chips')).toContainText('Voided');
-  await press(page, /^Hold .* with sandbox test card \(no sign in\)$/);
+  await press(page, /^Hold .* with card \(no sign in\)$/);
   const again = await waitPhase(page, 'holding');
   expect(again.payments.map(p => p.state)).toEqual(['voided', 'authorized']);
   expect(again.payments[1].authorizationId).not.toBe(before.payments[0].authorizationId);
@@ -141,7 +141,7 @@ for (const mock of [true, false]) test(`PART B ${mock ? 'mock' : 'real local ser
 
 test('PART B mock: capture hides the input and refuses asks', async ({ page }) => {
   await startTrip(page, true); await quote(page);
-  await press(page, /^Hold .* with sandbox test card \(no sign in\)$/);
+  await press(page, /^Hold .* with card \(no sign in\)$/);
   await waitPhase(page, 'holding');
   await press(page, 'Confirm bookings');
   await waitPhase(page, 'confirmed_captured');

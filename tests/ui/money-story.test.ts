@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { PaymentAttempt, TripView } from '../../src/domain/types';
 // @ts-expect-error Browser module is plain JavaScript.
-import { moneyStory, mandateSteps } from '../../public/js/money-story.js';
+import { moneyStory, mandateSteps, netSummary, netSummaryText } from '../../public/js/money-story.js';
 
 function attempt(state: PaymentAttempt['state'], amountCents: number, extra: Partial<PaymentAttempt> = {}): PaymentAttempt {
   return { state, amountCents, quoteVersion: 1, method: 'card', refunds: [], receipts: [], ...extra };
@@ -97,3 +97,79 @@ describe('mandateSteps', () => {
     expect(moneyStory(view)).not.toContain('PayPal held it.');
   });
 });
+
+describe('mandate step 3 tells the truth about latest held attempt', () => {
+  test('authorized: PayPal holds $X now', () => {
+    const steps = mandateSteps(trip([attempt('authorized', 42800)]));
+    expect(steps[2].text).toBe('PayPal holds $428.00 now');
+    expect(steps[2].reached).toBe(true);
+  });
+  test('capturing, voiding, or unknown with earlier held state: PayPal hold of $X, being checked', () => {
+    const capturing = mandateSteps(trip([attempt('capturing', 42800)]));
+    expect(capturing[2].text).toBe('PayPal hold of $428.00, being checked');
+    expect(capturing[2].reached).toBe(true);
+
+    const voiding = mandateSteps(trip([attempt('voiding', 42800)]));
+    expect(voiding[2].text).toBe('PayPal hold of $428.00, being checked');
+    expect(voiding[2].reached).toBe(true);
+
+    const unknownHeld = mandateSteps(trip([attempt('unknown', 42800, { previousState: 'authorized' })]));
+    expect(unknownHeld[2].text).toBe('PayPal hold of $428.00, being checked');
+    expect(unknownHeld[2].reached).toBe(true);
+  });
+  test('captured: PayPal held $X, then captured it', () => {
+    const steps = mandateSteps(trip([attempt('captured', 42800)]));
+    expect(steps[2].text).toBe('PayPal held $428.00, then captured it');
+    expect(steps[2].reached).toBe(true);
+  });
+  test('voided: PayPal released the $X hold, nothing charged', () => {
+    const steps = mandateSteps(trip([attempt('voided', 42800)]));
+    expect(steps[2].text).toBe('PayPal released the $428.00 hold, nothing charged');
+    expect(steps[2].reached).toBe(true);
+  });
+  test('expired: The $X hold expired, nothing charged', () => {
+    const steps = mandateSteps(trip([attempt('expired', 42800)]));
+    expect(steps[2].text).toBe('The $428.00 hold expired, nothing charged');
+    expect(steps[2].reached).toBe(true);
+  });
+  test('none: PayPal holds', () => {
+    const steps = mandateSteps(trip([]));
+    expect(steps[2].text).toBe('PayPal holds');
+    expect(steps[2].reached).toBe(false);
+  });
+  test("the judge case: one voided $428.00 attempt must not contain 'holds $428.00'", () => {
+    const steps = mandateSteps(trip([attempt('voided', 42800)]));
+    expect(steps[2].text).not.toContain('holds $428.00');
+    expect(steps[2].text).toBe('PayPal released the $428.00 hold, nothing charged');
+  });
+});
+
+describe('netSummary and netSummaryText', () => {
+  test('netSummaryText for voided $428 + captured $397 with completed $50 refund equals example exactly', () => {
+    const view = trip([
+      attempt('voided', 42800),
+      attempt('captured', 39700, {
+        refunds: [{ amountCents: 5000, state: 'completed', reason: 'Activity cancelled' }],
+      }),
+    ]);
+    expect(netSummary(view)).toEqual({
+      releasedCents: 42800,
+      capturedCents: 39700,
+      refundedCents: 5000,
+      netCents: 34700,
+      uncertain: false,
+    });
+    expect(netSummaryText(view)).toBe(
+      'Released, never charged: $428.00 · Captured: $397.00 · Refunded: $50.00 · Net charged: $347.00',
+    );
+  });
+  test('an unknown capture gives Confirmed so far', () => {
+    const view = trip([
+      attempt('unknown', 39700, { previousState: 'captured' }),
+    ]);
+    expect(netSummary(view).uncertain).toBe(true);
+    expect(netSummaryText(view)).toContain('Confirmed so far');
+    expect(netSummaryText(view)).not.toContain('Net charged');
+  });
+});
+

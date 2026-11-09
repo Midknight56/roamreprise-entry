@@ -5,7 +5,7 @@ showcase kit's own (`sfx/whoosh.wav`, made in code) and Kenney's CC0 packs (`sfx
 No voice. Nylon style plucked strings over a soft low pad at 96 BPM.
 
 Usage: python -P dev/film_audio.py   (after dev/film_timeline.py; reads the kit timeline and video/raw/marks.json)
-Writes A:/Projects/showcase-kit/public/media/roamreprise/music.wav (48 kHz stereo).
+Writes A:/Projects/showcase-kit/public/media/roamreprise-r2/music.wav (48 kHz stereo).
 """
 import argparse
 import json
@@ -16,9 +16,9 @@ import numpy as np
 
 SR = 48000
 KIT = Path("A:/Projects/showcase-kit")
-TIMELINE = KIT / "timelines/roamreprise.json"
+TIMELINE = Path(__file__).resolve().parent.parent / "docs/video/roamreprise-r2.timeline.json"  # the segment plan, not the kit copy
 MARKS = Path(__file__).resolve().parent.parent / "video/raw/marks.json"
-OUT = KIT / "public/media/roamreprise/music.wav"
+OUT = KIT / "public/media/roamreprise-r2/music.wav"
 rng = np.random.default_rng(25)
 
 BPM = 96
@@ -122,18 +122,26 @@ def moments(timeline, marks):
         seconds = marks[scene][name][0]
         result = []
         for clip in timeline["clips"]:
-            for device in clip["scene"]["devices"]:
-                if device["src"]["file"] != f"media/roamreprise/{scene}.webm":
-                    continue
-                offset = seconds - device["mediaIn"]
-                if 0 <= offset < device["out"] - device["in"]:
-                    result.append(clip["start"] + device["in"] + offset)
+            # Round 2 clips are full frame or phone footage: file, in and out are on the clip itself.
+            if not clip["file"].endswith(f"/{scene}.webm"):
+                continue
+            offset = seconds - clip["in"]
+            if 0 <= offset < clip["out"] - clip["in"]:
+                result.append(clip["start"] + offset)
         return result
 
-    cuts = [clip["start"] for clip in timeline["clips"][1:]]
+    # A whoosh only where a beat changes, not at every close crop inside a beat.
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("film_timeline", Path(__file__).with_name("film_timeline.py"))
+    module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+    BEATS = module.BEATS
+    starts, at = set(), 0
+    for n in sorted(BEATS):
+        starts.add(round(at, 3)); at += BEATS[n][0]
+    cuts = [clip["start"] for clip in timeline["clips"][1:] if round(clip["start"], 3) in starts]
     taps = [t for scene in ("desk", "phone") for name in marks[scene]
             if name.endswith("-click") for t in film_time(scene, name)]
-    goods = [t for name in ("b5-held", "b9-held", "b10-captured", "b11-completed")
+    goods = [t for name in ("b5-held", "b8-released", "b9-held", "b10-captured", "b11-completed")
              for t in film_time("desk", name)]
     return cuts, sorted(set(taps)), sorted(set(goods))
 

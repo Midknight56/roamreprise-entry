@@ -10,9 +10,9 @@ function loadSdk(clientId) {
     script.onload = () =>
       window.paypal
         ? resolve(window.paypal)
-        : reject(new Error('PayPal did not load. Use the sandbox test card.'));
+        : reject(new Error('PayPal did not load. Use the card button.'));
     script.onerror = () =>
-      reject(new Error('PayPal is unavailable. Use the sandbox test card.'));
+      reject(new Error('PayPal is unavailable. Use the card button.'));
     document.head.append(script);
   }).catch((error) => {
     sdkPromise = undefined;
@@ -30,9 +30,9 @@ export async function renderPay(
   container.replaceChildren();
   if (!trip.next.includes('pay')) return;
   container.innerHTML = `
-    <button class="primary" id="pay-card">Hold ${money(trip.quote?.totalCents || trip.itinerary.totalCents)} with sandbox test card (no sign in)</button>
-    <p class="payment-boundary">${isMock ? 'Mock payment. No PayPal request is sent.' : 'PayPal sandbox · test money · nothing captured yet.'}</p>
-    <div class="paypal-box"><strong>Pay with PayPal (sandbox login)</strong><div class="paypal-slot"><p class="fine">Loading PayPal button...</p></div><div class="judge-login"><strong>For judges</strong><span id="judge-email">sb-bzdbn21339224@personal.example.com</span><button type="button" class="text-button" id="copy-judge-email">Copy</button><small>Sandbox test account, test money only. Password in the README.</small></div></div>
+    <button class="primary" id="pay-card">Hold ${money(trip.quote?.totalCents || trip.itinerary.totalCents)} with card (no sign in)</button>
+    <p class="payment-boundary">${isMock ? 'Mock payment. No PayPal request is sent.' : 'Nothing is charged yet.'}</p>
+    <div class="paypal-box"><strong>Pay with PayPal</strong><div class="paypal-slot"><p class="fine">Loading PayPal button...</p></div><details class="judge-login"><summary>For judges: PayPal buyer login</summary><span id="judge-email">sb-bzdbn21339224@personal.example.com</span><button type="button" class="text-button" id="copy-judge-email">Copy</button><small>PayPal sandbox buyer. Password in the README.</small></details></div>
   `;
   const actions = document.querySelector('#actions');
   if (actions) {
@@ -67,7 +67,7 @@ export async function renderPay(
   }
   if (!config.paypalClientId) {
     slot.innerHTML =
-      '<p class="fine">PayPal button unavailable, use the test card</p>';
+      '<p class="fine">PayPal button unavailable, use the card button</p>';
     return;
   }
   try {
@@ -114,6 +114,6 @@ export async function renderPay(
       })
       .render(slot);
   } catch (error) {
-    if (slot.isConnected) slot.textContent = 'PayPal button unavailable, use the test card';
+    if (slot.isConnected) slot.textContent = 'PayPal button unavailable, use the card button';
   }
 }

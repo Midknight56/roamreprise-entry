@@ -23,7 +23,7 @@ export function validateSchedule(itinerary: Itinerary, ceilingCents: number): Ch
   let hotel;
   try { hotel = offer(itinerary.hotelId); } catch { add('CHECKIN', 'The hotel is missing.'); }
   if (hotel?.kind !== 'lodging') add('CHECKIN', 'Choose a hotel.');
-  if (hotel && !hotel.available) add('AVAILABILITY', 'No rooms that night.');
+  if (hotel && !hotel.available) add('AVAILABILITY', 'No rooms (simulated inventory).');
   for (const i of itinerary.items) {
     if (!reservationStates.includes(i.state)) add('STATE', 'Unknown reservation state.', i.id);
   }

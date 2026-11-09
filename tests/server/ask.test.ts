@@ -287,8 +287,8 @@ describe('ask AI calls stay inside the caps', () => {
       JSON.stringify({ hotelId: 'h-patio', slots: {} }),
       JSON.stringify({ slot: 'd2-am', shiftMinutes: 30 }),
       JSON.stringify({ slot: 'd1-late', offerId: 'a-graca' }),
-      JSON.stringify({ id: 'h-lumen', fit: 'Fado nearby' }),
-      JSON.stringify({ id: 'h-riocalmo' }),
+      JSON.stringify({ id: 'h-riocalmo', fit: 'Fado nearby' }),
+      JSON.stringify({ id: 'h-lumen' }),
     ]);
     await engine.create(ID, SID, input());
     await run('ask', { text: 'Make Sunday morning slower' });
@@ -348,8 +348,8 @@ describe('the record path still needs a fresh proposal and only two calls', () =
   test('recording works after create and refuses a second recording even though the trip limit is now four', async () => {
     const w = await world(), call = vi.fn()
       .mockResolvedValueOnce({ text: '{"hotelId":"h-patio","slots":{"d1-lunch":{"offerId":"m-ribeira","why":"Markets fit your tastes"}}}', neurons: 1 })
-      .mockResolvedValueOnce({ text: '{"id":"h-lumen","reason":"Fewest changed times"}', neurons: 1 })
-      .mockResolvedValue({ text: '{"id":"h-lumen"}', neurons: 1 });
+      .mockResolvedValueOnce({ text: '{"id":"h-riocalmo","reason":"Fewest changed times"}', neurons: 1 })
+      .mockResolvedValue({ text: '{"id":"h-riocalmo"}', neurons: 1 });
     const engine = new TripEngine({ ...w.deps, store: new MemoryStore(), ai: new Agent({ call }) });
     await engine.create(ID, SID, input()); await engine.recordAnswers(SID);
     expect(call).toHaveBeenCalledTimes(2);

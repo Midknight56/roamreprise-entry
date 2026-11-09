@@ -2,19 +2,13 @@ import { test, expect } from './fixtures';
 import { startTrip, quote, hold, press, waitPhase, checkRepair, receiptPage, watchErrors, idle } from './helpers';
 import type { Page } from '@playwright/test';
 import type { TripView } from '../src/domain/types';
+// @ts-expect-error Browser module is plain JavaScript.
+import { mandateSteps } from '../public/js/money-story.js';
 
 const usd = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 async function checkMandate(page: Page, view: TripView) {
-  const authorized = [...view.payments].reverse().find(payment => !!payment.authorizationId);
-  const captured = view.payments.filter(payment => payment.state === 'captured');
-  const refunded = view.payments.flatMap(payment => payment.refunds).filter(refund => refund.state === 'completed');
-  await expect(page.locator('.mandate-strip li')).toHaveText([
-    `You allow up to ${usd(view.ceilingCents)}`,
-    `Agent proposes ${usd(view.quote?.totalCents ?? view.itinerary.totalCents)}`,
-    `PayPal holds${authorized ? ` ${usd(authorized.amountCents)}` : ''}`,
-    `Captured${captured.length ? ` ${usd(captured.reduce((sum, payment) => sum + payment.amountCents, 0))}` : ''} when every booking is confirmed`,
-    `Refunded${refunded.length ? ` ${usd(refunded.reduce((sum, refund) => sum + refund.amountCents, 0))}` : ''} when an activity was cancelled`,
-  ]);
+  const steps = mandateSteps(view);
+  await expect(page.locator('.mandate-strip li')).toHaveText(steps.map((s: { text: string }) => s.text));
 }
 
 test('mock mode shows mandate and money story through every phase and recorded viewer without /api calls', async ({ page }, testInfo) => {

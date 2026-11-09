@@ -56,7 +56,7 @@ export async function quote(page: Page) {
 }
 
 export async function hold(page: Page) {
-  await press(page, /^Hold .* with sandbox test card \(no sign in\)$/);
+  await press(page, /^Hold .* with card \(no sign in\)$/);
   return readTrip(page);
 }
 

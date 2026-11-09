@@ -1,7 +1,9 @@
 # RoamReprise
 
-Plan a weekend around what you enjoy, hold the money with PayPal, and repair the plan when a booking falls through.
-The money follows the plan: void before capture, capture when every booking is confirmed, refund after capture.
+A prototype for a small tour operator who sells a Lisbon weekend as one package with one PayPal payment. When a
+simulated supplier fails, it proposes a checked replacement, and once the traveler approves, the payment follows:
+void before capture, capture when every booking is confirmed, partial refund after capture. Suppliers are simulated;
+payments are real PayPal sandbox calls with test money.
 
 Try it: https://roamreprise.midknight-labs.workers.dev (free, no sign in).
 
@@ -9,16 +11,19 @@ Try it: https://roamreprise.midknight-labs.workers.dev (free, no sign in).
 
 The 60 second path, with no login:
 
-1. Open the site and press **Plan my two days**. A globe flies into Lisbon and becomes a two day plan on a Bryntum
-   Scheduler, with the travel time between stops drawn as buffers.
+1. Open the site. Under "If a booking falls through, protect", keep **Lowest total** (or pick **My activities**).
+   Press **Plan my two days**. A globe flies into Lisbon and becomes a two day plan on a Bryntum
+   Scheduler, with the estimated travel time between stops drawn as buffers.
 2. Optional: under the Scheduler, press **Make Sunday morning slower**, then **Ask the agent**. The Sunday stops
    slide and the quote asks for approval again. You have two changes per trip, before or during a hold, before capture. After a hold, a checked change voids the old authorization. Hold the new total to continue.
 3. Press **Approve quote**, then **Hold $428.00 with sandbox test card (no sign in)** (the amount is your current
    total; $428.00 for the default plan with no changes). This is a real PayPal sandbox
    authorization. Its ids are on the money panel and the receipt page.
 4. Press **Simulate: the hotel cancels our room**. The hotel turns red. The agent lists the other hotels with the result of every check
-   (no rooms, over budget, buffers kept), the stops that move, and its pick.
-5. Press **Use** on the picked hotel (the AI may pick Lumen Rooms or Rio Calmo Inn). The old authorization is **voided**. Hold the new total, then **Confirm bookings**: every booking is
+   (no rooms in the simulated inventory, over the ceiling, estimated travel times), the activities each one drops, the
+   stops that move, and its pick.
+5. Press **Use** on the picked hotel (with Lowest total it is Rio Calmo Inn, which drops the castle walk; with My
+   activities it is Lumen Rooms, which keeps it). The old authorization is **voided**. Hold the new total, then **Confirm bookings**: every booking is
    confirmed and the payment is **captured**.
 6. Press **Simulate: the operator cancels an activity**. The slot is replanned and the computed price difference is **refunded** (a partial refund).
 7. Open **All receipts** to see every PayPal call: path, HTTP status, PayPal status, ids, request id and debug id.
@@ -39,7 +44,7 @@ What is real and what is simulated:
 | PayPal calls | Real, PayPal sandbox (test money): Orders v2 create and authorize, Payments v2 capture, void, refund and reads, webhooks with signature verification |
 | Hotels, transfers, activities | **Simulated supplier**: local fixtures, labelled on every booking and receipt. No real booking is made |
 | Places | Real public places in Lisbon, used for geography only |
-| AI | Workers AI, IBM Granite 4.0 H Micro, within a daily cap. When the cap is used up, the step says "rule pick" |
+| AI | Workers AI, IBM Granite 4.0 H Micro, within a daily cap. Without a live answer the step is labelled: cached answer, recorded answer (default trip only) or rule pick |
 
 ## What it does
 
@@ -47,7 +52,8 @@ What is real and what is simulated:
   every time, travel buffer, opening hour, price and the ceiling. The AI never sets a price or a payment field.
 - **Hold.** PayPal authorizes the quote (`intent: AUTHORIZE`, one purchase unit). Bookings are held, not confirmed.
 - **Repair.** When the hotel fails, every other hotel is checked. The Scheduler shows the old times as ghosts and the
-  moved stops, and keeps every buffer.
+  moved stops, and keeps the estimated travel buffers. The traveler chose earlier what a repair protects: the lowest
+  total, or every activity. Nothing changes until they accept.
 - **Money follows.** A changed trip never reuses the old approval: the old authorization is voided and the new total is
   authorized. Capture uses `final_capture: true` and only runs when every booking is confirmed. A supplier cancellation
   after capture becomes a partial refund, shown as pending until PayPal says it is completed.
@@ -55,6 +61,8 @@ What is real and what is simulated:
   If an answer is lost, the trip shows "Checking payment", refuses every other write, and reads PayPal to settle it.
   A lost authorize answer is settled by reading the order, never by a second hold. Writes for one trip run one at a
   time inside its Durable Object. Webhooks are verified, stored once, and never move a state backwards.
+
+Six repair and payment cases, each reproduced by a test: [docs/SCENARIOS.md](docs/SCENARIOS.md).
 
 ## How it is built
 

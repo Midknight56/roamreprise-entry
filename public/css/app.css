@@ -779,33 +779,94 @@ summary {
   font-size: 11px;
   margin-bottom: 9px;
 }
+.candidate .candidate-area {
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.candidate-facts {
+  margin: 10px 0;
+}
+.candidate-facts .fact {
+  font-size: 14px;
+  line-height: 1.45;
+  margin: 6px 0;
+  color: var(--ink);
+}
+.candidate-facts .fact-sub {
+  font-size: 12px;
+  color: var(--muted);
+  display: block;
+}
 .candidate .candidate-price {
   color: var(--blue);
-  font-size: 13px;
+  font-size: 14px;
 }
 .candidate .badge {
   font-size: 9px;
 }
 .candidate ul {
   padding-left: 15px;
-  font-size: 10px;
-  line-height: 1.6;
-  margin-bottom: 12px;
+  font-size: 11px;
+  line-height: 1.5;
+  margin-bottom: 10px;
+}
+.candidate .fine-list {
+  font-size: 11px;
+  line-height: 1.4;
+  margin-bottom: 8px;
 }
 .candidate button {
   width: 100%;
-  font-size: 11px;
+  font-size: 14px;
   padding: 8px;
+  box-sizing: border-box;
 }
 .candidate .rejection {
   color: var(--red);
+  font-size: 14px;
+}
+.rejected-block {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.rejected-block h3 {
+  font-size: 18px;
+  margin: 0 0 10px;
+}
+.rejected-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 8px;
+  font-size: 14px;
+}
+.rejected-line h4 {
+  font-size: 18px;
+  margin: 0;
+  font-weight: 600;
+  color: var(--ink);
+}
+.rejected-line .candidate-price {
+  font-size: 14px;
+  color: var(--blue);
 }
 .pick-reason {
   padding: 12px;
   background: #f1f4ee;
   border-radius: 6px;
-  font-size: 11px;
-  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.4;
+  margin-top: 14px;
+}
+.net-summary {
+  font-size: 14px;
+  line-height: 1.4;
+  margin: 8px 0;
+  color: var(--ink);
 }
 .agent-log {
   padding: 20px 0;
@@ -1386,7 +1447,7 @@ footer {
 .repair-panel { grid-column: 1 / -1; grid-row: 3; }
 .agent-log { grid-column: 1; grid-row: 4; margin: 0; }
 .receipts-panel { grid-column: 2; grid-row: 4; }
-.candidate-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.candidate-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .candidate button + button { margin-top: 12px; }
 .day-track { height: 140px; }
 #schedule { min-height: 324px; }
@@ -1415,7 +1476,8 @@ footer {
 .rr-short-name.narrow time { overflow: visible; }
 
 /* J8 */
-.judge-login { display: grid; grid-template-columns: auto 1fr auto; gap: 6px 10px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.judge-login { display: grid; grid-template-columns: 1fr auto; gap: 6px 10px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.judge-login summary { grid-column: 1 / -1; cursor: pointer; color: var(--muted); font-size: 12px; }
 .judge-login > small { grid-column: 1 / -1; color: var(--muted); }
 .judge-login .text-button { padding: 3px 8px; }
 .failure-paths { flex-basis: 100%; margin-top: 8px; }
@@ -1516,3 +1578,8 @@ footer {
   .ask-controls { flex-direction: column; }
   .ask-examples button { width: 100%; }
 }
+
+/* J27: repair choice in the plan form */
+.repair-choice { border: 0; padding: 0; margin: 14px 0 0; display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; }
+.repair-choice legend { font-size: 13px; font-weight: 600; margin-bottom: 6px; padding: 0; width: 100%; }
+.repair-choice label { display: inline-flex; gap: 6px; align-items: center; font-size: 14px; min-height: 32px; }

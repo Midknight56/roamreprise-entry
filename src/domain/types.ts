@@ -16,7 +16,8 @@ export interface Item {
   state: ReservationState; supplierRef?: string; why?: string; supplier?: typeof SUPPLIER;
 }
 export interface Itinerary { version: number; hotelId: string; totalCents: number; items: Item[] }
-export type IssueCode = 'BUFFER' | 'OVERLAP' | 'OPEN_HOURS' | 'DAY_WINDOW' | 'CHECKIN' | 'PRICE_MATCH' | 'CEILING' | 'DAYS' | 'DUPLICATE' | 'STATE' | 'AVAILABILITY';
+export type RepairPolicy = 'lowest_total' | 'keep_activities';
+export type IssueCode = 'POLICY' | 'BUFFER' | 'OVERLAP' | 'OPEN_HOURS' | 'DAY_WINDOW' | 'CHECKIN' | 'PRICE_MATCH' | 'CEILING' | 'DAYS' | 'DUPLICATE' | 'STATE' | 'AVAILABILITY';
 export interface Issue { code: IssueCode; itemId?: string; message: string }
 export interface Checks { ok: boolean; issues: Issue[] }
 export interface Move { itemId: string; name: string; fromStart: string; toStart: string; fromEnd: string; toEnd: string; reason: string }
@@ -24,6 +25,10 @@ export interface Reprice { itemId: string; name: string; fromCents: number; toCe
 export interface Candidate {
   id: string; hotelId: string; name: string; area: string; priceDeltaCents: number; newTotalCents: number;
   moves: Move[]; repriced: Reprice[]; dropped: string[]; checks: Checks;
+  /** Names of dropped activities (meals do not count). */
+  droppedActivities: string[];
+  /** Sum of absolute minute changes across moves. */
+  movedMinutes: number;
   /** Checked preview, including buffer and price changes which do not move a start time. */
   itinerary: Itinerary;
 }
@@ -56,6 +61,8 @@ export interface AskAnswer { text: string; changed: boolean; message: string; re
 export type Phase = 'planned' | 'quoted' | 'authorized' | 'holding' | 'repair_proposed' | 'requote' | 'confirmed_captured' | 'refund_pending' | 'refunded' | 'declined' | 'checking_payment';
 export interface TripView {
   id: string; phase: Phase; ceilingCents: number; tastes: string[]; note: string; itinerary: Itinerary;
+  /** What a hotel repair protects. Absent in older stored trips and recordings, which mean lowest total. */
+  repairPolicy?: RepairPolicy;
   previous?: Pick<Itinerary, 'version' | 'items'>;
   repair?: { failedItemId: string; candidates: Candidate[]; pickId: string; pickReason: string; pickSource: PickSource };
   quote?: Quote; payments: PaymentAttempt[]; webhooks: WebhookReceipt[]; log: AgentStep[]; issues: Issue[]; next: string[];

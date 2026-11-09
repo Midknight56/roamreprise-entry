@@ -290,7 +290,7 @@ try {
     await click(page, 'Approve quote');
     check(`${size}: quoted`, (await current(page)).phase === 'quoted');
     await shot(page, size, 'quoted', '#pay-panel');
-    await click(page, 'Hold $426.00 with sandbox test card (no sign in)');
+    await click(page, 'Hold $426.00 with card (no sign in)');
     check(`${size}: authorized`, (await current(page)).phase === 'holding');
     await shot(page, size, 'authorized', '#state-chips');
     check(`${size}: holding`, (await current(page)).phase === 'holding');
@@ -431,7 +431,7 @@ try {
         t.itinerary.version === 2,
     );
     await shot(page, size, 'requote', '#money-title');
-    await click(page, 'Hold $474.00 with sandbox test card (no sign in)');
+    await click(page, 'Hold $474.00 with card (no sign in)');
     await click(page, 'Confirm bookings');
     t = await current(page);
     check(
@@ -753,8 +753,8 @@ try {
   await unavailablePage.goto(origin);
   await click(unavailablePage, 'Plan my two days');
   await click(unavailablePage, 'Approve quote');
-  await unavailablePage.getByText('PayPal button unavailable, use the test card', {exact:true}).waitFor();
-  check('PayPal failure keeps labelled wallet box and test card', await unavailablePage.locator('#pay-card').isVisible() && (await unavailablePage.locator('.paypal-box').innerText()).includes('Pay with PayPal (sandbox login)'));
+  await unavailablePage.getByText('PayPal button unavailable, use the card button', {exact:true}).waitFor();
+  check('PayPal failure keeps labelled wallet box and test card', await unavailablePage.locator('#pay-card').isVisible() && (await unavailablePage.locator('.paypal-box').innerText()).includes('Pay with PayPal'));
   await unavailable.close();
   check('Zero browser console or page errors' , report.errors.length === 0);
 } finally {

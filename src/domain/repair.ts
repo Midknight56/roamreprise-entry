@@ -2,7 +2,27 @@ import { activitiesAndMeals, hotels, offer } from './offers';
 import { place } from './places';
 import { scheduleSelection } from './planner';
 import { isActive, totalCents, validateSchedule } from './validate';
-import type { Candidate, Item, Itinerary, Move, Reprice } from './types';
+import type { Candidate, Item, Itinerary, Move, RepairPolicy, Reprice } from './types';
+
+const clockMinutes = (hhmm: string) => Number(hhmm.slice(0, 2)) * 60 + Number(hhmm.slice(3, 5));
+/** Same rule as the page: a move whose start did not change counts its end change. */
+export function movedMinutes(moves: Move[]): number {
+  return moves.reduce((sum, m) => sum + Math.abs(m.fromStart === m.toStart
+    ? clockMinutes(m.toEnd) - clockMinutes(m.fromEnd) : clockMinutes(m.toStart) - clockMinutes(m.fromStart)), 0);
+}
+/** Checked candidates in the order the rule pick uses for this policy. */
+export function rankCandidates(candidates: Candidate[], policy: RepairPolicy = 'lowest_total'): Candidate[] {
+  return candidates.filter(c => c.checks.ok).sort(policy === 'keep_activities'
+    ? (a, b) => a.movedMinutes - b.movedMinutes || a.newTotalCents - b.newTotalCents || a.id.localeCompare(b.id)
+    : (a, b) => a.newTotalCents - b.newTotalCents || a.moves.length - b.moves.length || a.id.localeCompare(b.id));
+}
+/** The candidates an AI answer may choose without breaking the traveler's choice. */
+export function aiChoices(candidates: Candidate[], policy: RepairPolicy = 'lowest_total'): Candidate[] {
+  const checked = candidates.filter(c => c.checks.ok);
+  if (policy === 'keep_activities') return checked;
+  const lowest = Math.min(...checked.map(c => c.newTotalCents));
+  return checked.filter(c => c.newTotalCents === lowest);
+}
 
 export function selectionOf(itinerary: Itinerary): Record<string, string> {
   return Object.fromEntries(itinerary.items.filter(i => isActive(i) && (i.kind === 'activity' || i.kind === 'meal')).map(i => [i.slot, i.offerId]));
@@ -32,26 +52,33 @@ function preserve(old: Itinerary, next: Itinerary): Itinerary {
     return { ...rest, id: prev.id, state: 'planned' };
   }) };
 }
-export function repairFailedLeg(itinerary: Itinerary, failedItemId: string, ceilingCents: number) {
+export function repairFailedLeg(itinerary: Itinerary, failedItemId: string, ceilingCents: number, policy: RepairPolicy = 'lowest_total') {
   const failed = itinerary.items.find(i => i.id === failedItemId);
   if (!failed || failed.kind !== 'lodging' || !failed.booked || !['failed', 'held', 'planned'].includes(failed.state)) throw Object.assign(new Error('STATE: Choose the failed hotel reservation.'), { code: 'STATE' });
   const candidates: Candidate[] = hotels.filter(h => h.id !== itinerary.hotelId).map(h => {
     const rebuilt = scheduleSelection(h.id, selectionOf(itinerary), itinerary.version, itinerary);
     const next = preserve(itinerary, rebuilt.itinerary);
     const checks = validateSchedule(next, ceilingCents);
+    const droppedItems = rebuilt.dropped.map(slot => itinerary.items.find(i => i.slot === slot));
+    const droppedActivities = droppedItems.filter((i): i is Item => i?.kind === 'activity').map(i => i.name);
+    if (policy === 'keep_activities' && droppedActivities.length) {
+      checks.issues.push({ code: 'POLICY', message: `Drops ${droppedActivities.join(' and ')}. You asked to keep your activities.` });
+      checks.ok = false;
+    }
+    const moves = movesBetween(itinerary, next);
     return { id: h.id, hotelId: h.id, name: h.name, area: place(h.placeId).area,
       priceDeltaCents: next.totalCents - itinerary.totalCents, newTotalCents: next.totalCents,
-      moves: movesBetween(itinerary, next), repriced: repricedBetween(itinerary, next),
-      dropped: rebuilt.dropped.map(slot => itinerary.items.find(i => i.slot === slot)?.id ?? slot), checks, itinerary: next };
+      moves, repriced: repricedBetween(itinerary, next),
+      dropped: rebuilt.dropped.map((slot, n) => droppedItems[n]?.id ?? slot), droppedActivities, movedMinutes: movedMinutes(moves), checks, itinerary: next };
   });
-  const best = candidates.filter(c => c.checks.ok).sort((a, b) => a.newTotalCents - b.newTotalCents || a.moves.length - b.moves.length || a.id.localeCompare(b.id))[0];
+  const best = rankCandidates(candidates, policy)[0];
   return { candidates, pickId: best?.id, rulePickId: best?.id };
 }
-export function applyCandidate(itinerary: Itinerary, candidate: Candidate): Itinerary {
+export function applyCandidate(itinerary: Itinerary, candidate: Candidate, policy: RepairPolicy = 'lowest_total'): Itinerary {
   if (!candidate.checks.ok) throw new Error('Cannot apply a rejected candidate.');
   // Recompute from current state: a candidate from a different version must not overwrite the trip.
   if (candidate.itinerary.version !== itinerary.version) throw new Error('The candidate is stale.');
-  const checked = repairFailedLeg(itinerary, itinerary.items.find(i => i.kind === 'lodging' && i.booked && isActive(i))!.id, candidate.newTotalCents).candidates.find(c => c.id === candidate.id);
+  const checked = repairFailedLeg(itinerary, itinerary.items.find(i => i.kind === 'lodging' && i.booked && isActive(i))!.id, candidate.newTotalCents, policy).candidates.find(c => c.id === candidate.id);
   if (!checked?.checks.ok || JSON.stringify(checked.itinerary) !== JSON.stringify(candidate.itinerary)) throw new Error('The candidate does not match this trip.');
   const next = preserve(itinerary, checked.itinerary);
   const oldHotel = itinerary.items.find(i => i.kind === 'lodging' && i.booked && isActive(i))!;

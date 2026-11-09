@@ -15,6 +15,15 @@ describe('public copy matches the code', () => {
     expect(visible).toContain(`At most ${cap('MAX_AI_CALLS_PER_TRIP')} AI calls`);
   });
 
+  test('about page names the operator audience, the one package payment and the current limits', () => {
+    const visible = about.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+    expect(visible).toContain('small tour operator sells a Lisbon weekend as one package');
+    expect(visible).toContain('one PayPal payment');
+    expect(visible).toContain('one Lisbon weekend, simulated inventory, estimated travel times, and one demonstrated activity cancellation');
+    expect(visible).toContain('does not import or repair bookings already bought from other sellers');
+    expect(visible).not.toMatch(/Trip planners stop at the plan/);
+  });
+
   test('public visitor text has no fixed $58 refund', () => {
     const files = import.meta.glob<string>('../../public/**/*.{html,js}', { eager: true, query: '?raw', import: 'default' });
     const visibleText = Object.entries(files).flatMap(([path, content]) => {

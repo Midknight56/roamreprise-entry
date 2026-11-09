@@ -1,7 +1,7 @@
 import { parseAsk, type AskChange } from '../domain/ask';
 import { cleanPreferences, type Preferences } from '../domain/preferences';
 import type { Picks, PlanInput, SlotCandidates } from '../domain/planner';
-import type { Candidate, Itinerary, Offer } from '../domain/types';
+import type { Candidate, Itinerary, Offer, RepairPolicy } from '../domain/types';
 import { isActive } from '../domain/validate';
 import type { Model } from './model';
 export interface Proposal { picks: Picks; why: Record<string, string>; prefs?: Preferences }
@@ -9,7 +9,8 @@ export interface RepairPick { id: string; reason: string }
 export interface AgentAnswer<T> { answer: T | null; neurons: number }
 export interface TripAI {
   proposeItinerary(input: PlanInput, slots: SlotCandidates, hotels: Offer[]): Promise<AgentAnswer<Proposal> | null>;
-  repairPick(candidates: Candidate[], tastes?: string[]): Promise<AgentAnswer<RepairPick> | null>;
+  /** Candidates are already limited to the ones the traveler's repair choice allows. */
+  repairPick(candidates: Candidate[], tastes?: string[], policy?: RepairPolicy): Promise<AgentAnswer<RepairPick> | null>;
   /** One plain language change after the plan. Optional so older fakes stay valid; no answer means the rule parser runs. */
   askChange?(text: string, options: SlotCandidates, itinerary: Itinerary): Promise<AgentAnswer<AskChange> | null>;
 }
@@ -56,10 +57,11 @@ export class Agent implements TripAI {
     const answer = parseProposal(result.text, slots, hotels);
     return { answer, neurons: result.neurons };
   }
-  async repairPick(candidates: Candidate[], tastes: string[] = []) {
+  async repairPick(candidates: Candidate[], tastes: string[] = [], policy: RepairPolicy = 'lowest_total') {
     const checked = candidates.filter(c => c.checks.ok);
     if (!checked.length) return null;
-    const result = await this.model.call('Pick one checked replacement hotel. Reply only with {"id":"..."} and optional "fit" of at most 8 words about the traveler\'s tastes. Prefer the lower total, then fewer moves. The rule pick does the same. Do not explain price or moves.', JSON.stringify({ tastes, candidates: checked.map(c => ({ id: c.id, name: c.name, area: c.area, moves: c.moves.length, newTotalCents: c.newTotalCents, priceDeltaCents: c.priceDeltaCents })) }));
+    const priority = policy === 'keep_activities' ? 'keep my activities' : 'lowest total';
+    const result = await this.model.call('Pick one replacement hotel for a traveler whose hotel fell through. The traveler chose a repair priority, and every listed hotel already meets it. Pick the one that best fits the traveler\'s tastes and the area. Reply only with {"id":"..."} and optional "fit" of at most 8 words about the traveler\'s tastes. Only use a listed id. Do not explain price or moves.', JSON.stringify({ priority, tastes, candidates: checked.map(c => ({ id: c.id, name: c.name, area: c.area, newTotalCents: c.newTotalCents, priceDeltaCents: c.priceDeltaCents, moves: c.moves.length, movedMinutes: c.movedMinutes, droppedActivities: c.droppedActivities })) }));
     if (!result) return null;
     const answer = parseRepair(result.text, checked);
     return { answer, neurons: result.neurons };

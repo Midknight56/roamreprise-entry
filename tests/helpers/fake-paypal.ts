@@ -13,7 +13,7 @@ export class FakePayPal {
   private n = 0;
   calls(prefix: string) { return this.sent.filter(s => `${s.method} ${s.path}`.startsWith(prefix)); }
   private auth(order: Record<string, any>) {
-    const a = { id: `AUTH-${++this.n}`, status: 'CREATED', amount: order.purchase_units[0].amount, custom_id: order.purchase_units[0].custom_id, expiration_time: '2026-11-09T20:00:00Z' };
+    const a = { id: `AUTH-${++this.n}`, status: 'CREATED', amount: order.purchase_units[0].amount, custom_id: order.purchase_units[0].custom_id, expiration_time: new Date(Date.now() + 29 * 86_400_000).toISOString() };
     this.authorizations.set(a.id, a); order.status = 'COMPLETED'; order.purchase_units[0].payments = { authorizations: [a] };
   }
   fetch: typeof fetch = async (input, init) => {

@@ -1,6 +1,6 @@
 ﻿import { api, isMock } from './api.js';
 import { esc, money } from './shared.js';
-import { moneyStory } from './money-story.js';
+import { moneyStory, netSummaryText } from './money-story.js';
 
 const query = new URLSearchParams(location.search);
 const id = query.get('trip');
@@ -73,7 +73,7 @@ function renderAttempt(payment, index) {
       <h3>Webhooks from PayPal</h3>
       <ul class="receipt-webhooks">${(window.currentWebhooks ?? []).filter(row => row.quoteVersion === payment.quoteVersion && window.currentPayments.findLastIndex(attempt => attempt.quoteVersion === row.quoteVersion) === index).map(renderWebhook).join('') || '<li>No verified webhooks for this attempt.</li>'}</ul>
       ${payment.refunds.length ? `<h3>Refunds</h3>${payment.refunds.map(renderRefund).join('')}` : ''}
-      <p class="fine">Bookings: Simulated supplier. Payments: PayPal sandbox (test money).</p>
+      <p class="fine">Bookings: Simulated supplier. Payments: PayPal.</p>
     </section>
   `;
 }
@@ -82,6 +82,12 @@ async function loadReceipts() {
   try {
     if (!id) throw new Error('No trip id. Open receipts from your trip.');
     const trip = await api.trip(id);
+    const summaryText = netSummaryText(trip);
+    const netEl = document.getElementById('receipt-net-summary');
+    if (netEl) {
+      netEl.textContent = summaryText;
+      netEl.hidden = !summaryText;
+    }
     document.getElementById('money-story').textContent = moneyStory(trip);
     document.getElementById('money-story-panel').hidden = false;
     window.currentWebhooks = trip.webhooks ?? [];

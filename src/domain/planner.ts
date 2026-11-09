@@ -7,7 +7,7 @@ import { SUPPLIER, type AgentStep, type Item, type Itinerary, type Offer, type S
 import { eventEnd, orderedItems, totalCents, validateSchedule } from './validate';
 
 export const DEFAULT_TASTES = ['tile art', 'fado music', 'viewpoints', 'food markets'];
-export interface PlanInput { tastes: string[]; note: string; ceilingCents: number }
+export interface PlanInput { tastes: string[]; note: string; ceilingCents: number; repairPolicy?: import('./types').RepairPolicy }
 export interface Picks { hotelId?: string; slots?: Record<string, string> }
 export type SlotCandidates = Record<string, Offer[]>;
 const overlap = (o: Offer, tastes: string[]) => o.tags.filter(t => tastes.includes(t)).length;
