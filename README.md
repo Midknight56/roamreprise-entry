@@ -7,6 +7,18 @@ payments are real PayPal sandbox calls with test money.
 
 Try it: https://roamreprise.midknight-labs.workers.dev (free, no sign in).
 
+## Judging criteria at a glance
+
+**Technological Implementation.** PayPal Orders v2 (create with AUTHORIZE, authorize), Payments v2 (capture, void, refund, and a read for each) and verified Webhooks. Every write carries a PayPal-Request-Id stored before the call. AI: IBM Granite 4.0 H Micro on Workers AI picks among options the code has already checked. Code owns every time, price and state.
+
+**Design.** A globe flies in and becomes the itinerary on a Bryntum Scheduler. A five step strip shows what the traveler allows, what the agent proposes, what PayPal holds, what was captured and what was refunded. Each replacement card leads with its new total and what it drops.
+
+**Potential Impact.** For a small tour operator selling a weekend as one package. When a supplier cancels, the plan and the one payment must change together, and today that is a phone call, a spreadsheet and a refund form.
+
+**Innovation/Idea.** The money follows the repaired plan: void the old hold, authorize the approved new total, capture only when every booking is confirmed, refund what a supplier cancels. Six repair and payment cases in docs/SCENARIOS.md are each reproduced by a test.
+
+**Presentation.** The video runs 2 minutes 47 seconds. Try it at https://roamreprise.midknight-labs.workers.dev. The receipt shows the recorded run in one line: $428.00 released and never charged, $397.00 captured, $50.00 refunded, $347.00 net charged.
+
 ## For judges
 
 The 60 second path, with no login:
